@@ -41,8 +41,8 @@ const AuthPortal: React.FC = () => {
   }
 
   return (
-    <div className="w-full max-w-md bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg">
-      <h2 className="text-2xl font-bold text-center text-gray-800 dark:text-gray-200 mb-6">
+    <div className="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-lg shadow-lg">
+      <h2 className="text-2xl font-bold text-center text-slate-800 dark:text-slate-200 mb-6">
         {isLogin ? 'Welcome Back' : 'Create Account'}
       </h2>
       
@@ -50,7 +50,7 @@ const AuthPortal: React.FC = () => {
 
       <form onSubmit={handleEmailAuth}>
         <div className="mb-4">
-          <label className="block text-gray-700 dark:text-gray-300 mb-2" htmlFor="email">
+          <label className="block text-slate-700 dark:text-slate-300 mb-2" htmlFor="email">
             Email Address
           </label>
           <input
@@ -58,12 +58,12 @@ const AuthPortal: React.FC = () => {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 border rounded-lg bg-slate-50 dark:bg-slate-700 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
           />
         </div>
         <div className="mb-6">
-          <label className="block text-gray-700 dark:text-gray-300 mb-2" htmlFor="password">
+          <label className="block text-slate-700 dark:text-slate-300 mb-2" htmlFor="password">
             Password
           </label>
           <input
@@ -71,7 +71,7 @@ const AuthPortal: React.FC = () => {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg bg-gray-50 dark:bg-gray-700 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-4 py-2 border rounded-lg bg-slate-50 dark:bg-slate-700 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
           />
         </div>
@@ -86,21 +86,21 @@ const AuthPortal: React.FC = () => {
       </form>
 
       <div className="my-6 flex items-center">
-        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-        <span className="mx-4 text-gray-500 dark:text-gray-400">OR</span>
-        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+        <div className="flex-grow border-t border-slate-300 dark:border-slate-600"></div>
+        <span className="mx-4 text-slate-500 dark:text-slate-400">OR</span>
+        <div className="flex-grow border-t border-slate-300 dark:border-slate-600"></div>
       </div>
 
       <button
         onClick={handleGoogleSignIn}
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 border border-gray-300 dark:border-gray-600 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition duration-300 text-gray-700 dark:text-gray-300"
+        className="w-full flex items-center justify-center gap-2 border border-slate-300 dark:border-slate-600 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition duration-300 text-slate-700 dark:text-slate-300"
       >
         <Icon name="Globe" size={20} />
         Sign in with Google
       </button>
 
-      <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
+      <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
         {isLogin ? "Don't have an account?" : 'Already have an account?'}
         <button onClick={() => setIsLogin(!isLogin)} className="ml-1 text-blue-600 hover:underline">
           {isLogin ? 'Sign up' : 'Log in'}

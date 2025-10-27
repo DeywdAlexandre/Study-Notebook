@@ -1,5 +1,5 @@
 {
-  "name": "Study Notebook",
+  "name": "All-in One PokerAce",
   "description": "A web application to organize study notes. Users can create a hierarchical structure of folders and subfolders. Inside folders, they can create 'Notes' (using a rich text editor) and 'HTML Views' (to render HTML/JS code).",
   "requestFramePermissions": []
 }

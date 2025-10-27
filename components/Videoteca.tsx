@@ -1,3 +1,5 @@
+
+
 import React, { useState, useCallback } from 'react';
 import Icon from './Icon';
 import Spinner from './Spinner';
@@ -6,6 +8,7 @@ import VideoCard from './VideoCard';
 import PlayerModal from './PlayerModal';
 import { createVideo, updateVideo, deleteVideo } from '../services/api';
 import type { Video } from '../types';
+import { useConfirmation } from '../context/ConfirmationContext';
 
 interface VideotecaProps {
     videos: Video[];
@@ -17,6 +20,7 @@ const Videoteca: React.FC<VideotecaProps> = ({ videos, onDataChange, selectedFol
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
   const [playingVideo, setPlayingVideo] = useState<Video | null>(null);
+  const { confirm } = useConfirmation();
 
   const handleOpenAddModal = () => {
     setEditingVideo(null);
@@ -28,12 +32,12 @@ const Videoteca: React.FC<VideotecaProps> = ({ videos, onDataChange, selectedFol
     setIsModalOpen(true);
   };
 
-  const handleSaveVideo = async (title: string, url: string, id?: string) => {
+  const handleSaveVideo = async (title: string, url: string, description: string, id?: string) => {
     try {
       if (id) {
-        await updateVideo(id, { title, url });
+        await updateVideo(id, { title, url, description });
       } else {
-        await createVideo(title, url, selectedFolderId);
+        await createVideo(title, url, description, selectedFolderId);
       }
       onDataChange();
       setIsModalOpen(false);
@@ -44,7 +48,12 @@ const Videoteca: React.FC<VideotecaProps> = ({ videos, onDataChange, selectedFol
   };
 
   const handleDeleteVideo = async (video: Video) => {
-    if (window.confirm(`Tem a certeza que quer apagar "${video.title}"?`)) {
+    const confirmed = await confirm({
+        title: `Apagar "${video.title}"`,
+        message: 'Tem a certeza que quer apagar este vídeo? Esta ação não pode ser desfeita.',
+        confirmButtonText: 'Sim, Apagar'
+    });
+    if (confirmed) {
         try {
             await deleteVideo(video.id);
             onDataChange();
@@ -58,10 +67,10 @@ const Videoteca: React.FC<VideotecaProps> = ({ videos, onDataChange, selectedFol
   const renderContent = () => {
     if (videos.length === 0) {
       return (
-        <div className="text-center">
-            <Icon name="VideoOff" size={48} className="mx-auto text-gray-400 mb-4" />
+        <div className="text-center text-slate-500 dark:text-slate-400">
+            <Icon name="VideoOff" size={48} className="mx-auto text-slate-400 dark:text-slate-500 mb-4" />
             <p>Nenhum vídeo encontrado.</p>
-            <p className="text-sm text-gray-500">Adicione um vídeo a esta pasta ou selecione "Todos os Vídeos".</p>
+            <p className="text-sm">Adicione um vídeo a esta pasta ou selecione "Todos os Vídeos".</p>
         </div>
       );
     }
@@ -81,17 +90,17 @@ const Videoteca: React.FC<VideotecaProps> = ({ videos, onDataChange, selectedFol
   };
 
   return (
-    <div className="h-full w-full flex flex-col text-gray-800 dark:text-gray-200 p-4 overflow-y-auto">
+    <div className="h-full w-full flex flex-col text-slate-800 dark:text-slate-200 p-4 sm:p-6 overflow-y-auto">
       <div className="w-full flex justify-end items-center mb-6 flex-shrink-0">
         <button
           onClick={handleOpenAddModal}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors"
+          className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 flex items-center gap-2 transition-colors"
         >
           <Icon name="Plus" size={16} />
           Adicionar Vídeo
         </button>
       </div>
-      <div className="w-full flex-grow">
+      <div className={`w-full flex-grow flex justify-center ${videos.length > 0 ? 'items-start' : 'items-center'}`}>
          {renderContent()}
       </div>
 
