@@ -6,6 +6,7 @@ import Icon from './Icon';
 import { createItem, updateItem, deleteItem } from '../services/api';
 import { useConfirmation } from '../context/ConfirmationContext';
 import NewRangeFolderModal from './NewRangeFolderModal';
+import { useAuth } from '../hooks/useAuth';
 
 interface FileTreeItemProps {
   item: Item;
@@ -220,15 +221,20 @@ interface FileTreeViewProps {
 export const FileTreeView: React.FC<FileTreeViewProps> = ({ items, onSelectItem, selectedItem, onItemsChange, viewType }) => {
   const [isRangeModalOpen, setIsRangeModalOpen] = useState(false);
   const [rangeModalParentId, setRangeModalParentId] = useState<string | null>(null);
+  const { user } = useAuth();
 
   const { onAdd, onRename, onDelete } = useItemMutations(onItemsChange, {
     setIsRangeModalOpen,
     setRangeModalParentId,
-  }, viewType);
+  }, viewType, user?.uid);
 
   const handleCreateRangeFolder = async (name: string, rangeType: 'all_positions' | 'blind_vs_blind' | 'open_raise') => {
+    if (!user) {
+        alert("Erro: Utilizador não autenticado.");
+        return;
+    }
     try {
-        await createItem(name, 'rangeFolder', rangeModalParentId, { rangeType });
+        await createItem(name, 'rangeFolder', rangeModalParentId, user.uid, { rangeType });
         onItemsChange();
         setIsRangeModalOpen(false);
     } catch (error) {
@@ -332,9 +338,15 @@ const useItemMutations = (
         setIsRangeModalOpen: (isOpen: boolean) => void;
         setRangeModalParentId: (id: string | null) => void;
     },
-    viewType: FileTreeViewProps['viewType']
+    viewType: FileTreeViewProps['viewType'],
+    userId?: string
 ) => {
     const onAdd = async (type: ItemType, parentId: string | null) => {
+        if (!userId) {
+            alert("Erro: Utilizador não autenticado.");
+            return;
+        }
+
         if (type === 'rangeFolder' && viewType === 'ranges') {
             rangeModalActions.setRangeModalParentId(parentId);
             rangeModalActions.setIsRangeModalOpen(true);
@@ -350,7 +362,7 @@ const useItemMutations = (
         if (type === 'pokerRange') defaultName = "Novo Range";
         
         try {
-            await createItem(defaultName, type, parentId);
+            await createItem(defaultName, type, parentId, userId);
             onItemsChange();
         } catch (error) {
             console.error("Failed to create item", error);
@@ -369,8 +381,12 @@ const useItemMutations = (
     };
     
     const onDelete = async (id:string) => {
+        if (!userId) {
+            alert("Erro: Utilizador não autenticado.");
+            return;
+        }
         try {
-            await deleteItem(id);
+            await deleteItem(id, userId);
             onItemsChange();
         } catch (error) {
             console.error("Failed to delete item", error);

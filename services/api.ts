@@ -1,465 +1,315 @@
-import type { Item, ItemType, Note, HtmlView, Video, RangeContent, PokerRange, PokerPosition, StackDepth, RangeActions } from '../types';
+
+
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  getDoc,
+  writeBatch,
+  type DocumentData,
+  setDoc,
+  documentId
+} from 'firebase/firestore';
+import { db, firebaseError } from './firebase';
+import type { Item, ItemType, Note, HtmlView, Video, RangeContent, PokerRange } from '../types';
 import { parseRangeText } from '../utils/range-parser';
-import { sampleItems, sampleNotes, sampleHtmlViews, sampleVideos, samplePokerRanges } from './data';
 
-const LOCAL_STORAGE_KEY = 'study-notebook-data';
-
-interface LocalDB {
-  items: Item[];
-  notes: Note[];
-  htmlViews: HtmlView[];
-  videos: Video[];
-  rangeContents: RangeContent[];
-  pokerRanges: PokerRange[];
-}
-
-const getDB = (): LocalDB => {
-  const dbString = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (dbString) {
-    try {
-        const parsed = JSON.parse(dbString);
-        // Garante que as novas coleções existam
-        if (!parsed.videos) parsed.videos = [];
-        if (!parsed.rangeContents) parsed.rangeContents = [];
-        if (!parsed.pokerRanges) parsed.pokerRanges = [];
-        
-        // Garante que as propriedades parentId e description existam
-        parsed.videos = parsed.videos.map((v: any) => ({ parentId: null, description: '', ...v }));
-        
-        return parsed;
-    } catch (e) {
-        console.error("Failed to parse localStorage data, resetting.", e);
-        return { items: [], notes: [], htmlViews: [], videos: [], rangeContents: [], pokerRanges: [] };
-    }
-  }
-  return { items: [], notes: [], htmlViews: [], videos: [], rangeContents: [], pokerRanges: [] };
+const getCollection = (collectionName: string) => {
+    if (firebaseError) throw new Error(firebaseError);
+    if (!db) throw new Error("A base de dados Firestore não está inicializada.");
+    return collection(db, collectionName);
 };
 
-const saveDB = (db: LocalDB) => {
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(db));
+const mapDocToData = <T extends { id: string }>(doc: DocumentData): T => {
+    return { id: doc.id, ...doc.data() } as T;
 };
-
-const processRanges = (ranges: PokerRange[]): PokerRange[] => {
-    return ranges.map(range => {
-      const newRangesByStack = JSON.parse(JSON.stringify(range.rangesByStack)); // Deep copy to avoid mutation issues
-      for (const stack in newRangesByStack) {
-        const positions = newRangesByStack[stack as StackDepth];
-        if (positions) {
-          for (const pos in positions) {
-            const data = positions[pos as PokerPosition];
-            if (data && data.rawText) {
-                const rawText = data.rawText;
-                // Migration: if rawText is a string, convert it to the new object format.
-                const rawTextObject = typeof rawText === 'string' ? { raise: rawText } : rawText;
-                data.rawText = rawTextObject; // Update the data object
-                data.matrix = parseRangeText(rawTextObject); // Always parse with the new parser
-            }
-          }
-        }
-      }
-      return { ...range, rangesByStack: newRangesByStack };
-    });
-};
-
-const initializeDB = () => {
-  const dbString = localStorage.getItem(LOCAL_STORAGE_KEY);
-  if (!dbString) {
-    console.log("Initializing local database with sample data.");
-    saveDB({
-      items: sampleItems,
-      notes: sampleNotes,
-      htmlViews: sampleHtmlViews,
-      videos: sampleVideos,
-      rangeContents: [],
-      pokerRanges: processRanges(samplePokerRanges),
-    });
-  } else {
-    // Garante que a base de dados existente tenha as coleções necessárias
-    const db = getDB();
-    let updated = false;
-    
-    // Adiciona dados de vídeo se não existirem
-    if (!db.videos) {
-        db.videos = sampleVideos;
-        updated = true;
-    }
-    db.videos = db.videos.map((v: any) => v.hasOwnProperty('parentId') ? v : { ...v, parentId: null });
-    db.videos = db.videos.map((v: any) => v.hasOwnProperty('description') ? v : { ...v, description: '' });
-    if (!db.items.some(i => i.type === 'videoFolder')) {
-        db.items.push(...sampleItems.filter(i => i.type === 'videoFolder'));
-        updated = true;
-    }
-
-    // Adiciona dados de range se não existirem
-    if (!db.items.some(i => i.type === 'rangeFolder')) {
-        db.items.push(...sampleItems.filter(i => i.type === 'rangeFolder'));
-        updated = true;
-    }
-    if (!db.rangeContents) {
-        db.rangeContents = [];
-        updated = true;
-    }
-    
-    // Adiciona dados de poker range, migra formatos antigos e popula matrizes.
-    if (!db.pokerRanges) {
-        db.pokerRanges = processRanges(samplePokerRanges);
-        updated = true;
-    } else {
-        const originalRangesString = JSON.stringify(db.pokerRanges);
-        let rangesToProcess = db.pokerRanges;
-
-        const needsMigration = rangesToProcess.some((r: any) => r.hasOwnProperty('rawText') || r.hasOwnProperty('ranges'));
-        if (needsMigration) {
-            console.log("Migrating old poker range formats to stack-based format...");
-            rangesToProcess = rangesToProcess.map((oldRange: any) => {
-                if (oldRange.hasOwnProperty('rangesByStack')) {
-                    if (!oldRange.name && oldRange.id === 'range-1') {
-                        oldRange.name = 'Exemplo: RFI Ranges';
-                    }
-                    return oldRange;
-                }
-                const newRange: PokerRange = {
-                    id: oldRange.id,
-                    name: oldRange.name || (oldRange.id === 'range-1' ? 'Exemplo: RFI Ranges' : 'Range Migrado'),
-                    rangesByStack: {},
-                };
-                if (oldRange.hasOwnProperty('ranges')) {
-                    newRange.rangesByStack['40'] = oldRange.ranges;
-                } else if (oldRange.hasOwnProperty('rawText')) {
-                    newRange.rangesByStack['40'] = {
-                        'BTN': {
-                            rawText: oldRange.rawText, // This will be converted to object in processRanges
-                            matrix: oldRange.matrix || {},
-                        }
-                    };
-                }
-                return newRange;
-            });
-        }
-        
-        const processedRanges = processRanges(rangesToProcess);
-        
-        if (JSON.stringify(processedRanges) !== originalRangesString) {
-             db.pokerRanges = processedRanges;
-             updated = true;
-        }
-    }
-
-
-    if (!db.items.some(i => i.type === 'pokerRange')) {
-        db.items.push(...sampleItems.filter(i => i.id === 'rfolder-3' || i.type === 'pokerRange'));
-        updated = true;
-    }
-    
-    if (updated) {
-        saveDB(db);
-    }
-  }
-};
-
-// Initialize on module load
-initializeDB();
 
 // --- API Functions ---
 
-const generateId = (prefix: string) => `${prefix}-${new Date().getTime()}-${Math.random().toString(36).substr(2, 9)}`;
-
 // Item Endpoints
-export const getItems = (): Promise<Item[]> => {
-  return new Promise((resolve) => {
-    const db = getDB();
-    resolve(db.items);
-  });
+export const getItems = async (userId: string): Promise<Item[]> => {
+    const itemsCol = getCollection('items');
+    const q = query(itemsCol, where("ownerId", "==", userId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => mapDocToData<Item>(doc));
 };
 
-export const createItem = (
+export const createItem = async (
     name: string,
     type: ItemType,
     parentId: string | null,
+    userId: string,
     options: {
         rangeType?: 'all_positions' | 'blind_vs_blind' | 'open_raise';
         initialContent?: string;
     } = {}
 ): Promise<Item> => {
-  return new Promise((resolve) => {
-    const db = getDB();
-    const newItem: Item = {
-      id: generateId(type),
-      name,
-      type,
-      parentId,
-      ownerId: 'demo-user-id', // Hardcoded for local dev
+    if (firebaseError) throw new Error(firebaseError);
+    if (!db) throw new Error("A base de dados Firestore não está inicializada.");
+    const batch = writeBatch(db);
+
+    const itemsCol = getCollection('items');
+
+    const newItemRef = doc(itemsCol);
+    const newItemData: Omit<Item, 'id'> = {
+        name,
+        type,
+        parentId,
+        ownerId: userId,
     };
 
     if (type === 'rangeFolder' && options.rangeType) {
-        newItem.rangeType = options.rangeType;
+        newItemData.rangeType = options.rangeType;
     }
 
-    if (type === 'note') {
-        const content = options.initialContent ?? `<h1>${name}</h1><p>Comece a escrever aqui...</p>`;
-        const newNote: Note = { id: generateId('content'), content };
-        newItem.contentId = newNote.id;
-        db.notes.push(newNote);
-    } else if (type === 'htmlView') {
-        const htmlContent = options.initialContent ?? '<!-- Comece a escrever o seu HTML aqui -->\n';
-        const newHtmlView: HtmlView = { id: generateId('content'), htmlContent };
-        newItem.contentId = newHtmlView.id;
-        db.htmlViews.push(newHtmlView);
-    } else if (type === 'pokerRange') {
-        const newRange: PokerRange = {
-            id: generateId('poker-range-content'),
-            name: name,
-            rangesByStack: {},
-        };
-        newItem.contentId = newRange.id;
-        db.pokerRanges.push(newRange);
+    if (type === 'note' || type === 'htmlView' || type === 'pokerRange') {
+        const notesCol = getCollection('notes');
+        const htmlViewsCol = getCollection('htmlViews');
+        const pokerRangesCol = getCollection('pokerRanges');
+
+        const contentRef = doc(
+            type === 'note' ? notesCol :
+            type === 'htmlView' ? htmlViewsCol :
+            pokerRangesCol
+        );
+        newItemData.contentId = contentRef.id;
+
+        if (type === 'note') {
+            const content = options.initialContent ?? `<h1>${name}</h1><p>Comece a escrever aqui...</p>`;
+            batch.set(contentRef, { content, ownerId: userId });
+        } else if (type === 'htmlView') {
+            const htmlContent = options.initialContent ?? '<!-- Comece a escrever o seu HTML aqui -->\n';
+            batch.set(contentRef, { htmlContent, ownerId: userId });
+        } else if (type === 'pokerRange') {
+            const newRange: Omit<PokerRange, 'id'> = { name, rangesByStack: {} };
+            batch.set(contentRef, { ...newRange, ownerId: userId });
+        }
     }
     
-    db.items.push(newItem);
-    saveDB(db as any);
-    resolve(newItem);
-  });
-};
-
-export const updateItem = (id: string, data: { name?: string; parentId?: string }): Promise<Item> => {
-  return new Promise((resolve, reject) => {
-    const db = getDB();
-    const itemIndex = db.items.findIndex(i => i.id === id);
-    if (itemIndex > -1) {
-      const oldItem = db.items[itemIndex];
-      const updatedItem = { ...oldItem, ...data };
-      db.items[itemIndex] = updatedItem;
-
-      // If the item name changed, update the corresponding poker range name
-      if (data.name && updatedItem.type === 'pokerRange' && updatedItem.contentId) {
-          const rangeIndex = db.pokerRanges.findIndex(r => r.id === updatedItem.contentId);
-          if (rangeIndex > -1) {
-              db.pokerRanges[rangeIndex].name = data.name;
-          }
-      }
-
-      saveDB(db as any);
-      resolve(db.items[itemIndex]);
-    } else {
-      reject(new Error("Item not found"));
+    batch.set(newItemRef, newItemData);
+    
+    // Se for uma rangeFolder, crie também o seu documento de conteúdo.
+    if (type === 'rangeFolder') {
+        const rangeContentsCol = getCollection('rangeContents');
+        // O ID do conteúdo é o mesmo ID do item da pasta
+        const contentRef = doc(rangeContentsCol, newItemRef.id);
+        const newRangeContentData = {
+            ownerId: userId,
+            data: {},
+            headerTitle: name,
+            headerSubtitle: `Conteúdo para ${name}`
+        };
+        batch.set(contentRef, newRangeContentData);
     }
-  });
+    
+    await batch.commit();
+
+    return { id: newItemRef.id, ...newItemData };
 };
 
-export const deleteItem = (id: string): Promise<void> => {
-    return new Promise((resolve) => {
-      let db = getDB();
-      const itemToDelete = db.items.find(i => i.id === id);
-  
-      if (!itemToDelete) {
-        return resolve();
-      }
-  
-      const idsToDelete = new Set<string>();
-      const findChildrenRecursive = (parentId: string) => {
+export const updateItem = async (id: string, data: { name?: string; parentId?: string }): Promise<Item> => {
+    if (firebaseError) throw new Error(firebaseError);
+    if (!db) throw new Error("A base de dados Firestore não está inicializada.");
+    
+    const itemsCol = getCollection('items');
+    const pokerRangesCol = getCollection('pokerRanges');
+    const itemRef = doc(itemsCol, id);
+    const batch = writeBatch(db);
+
+    batch.update(itemRef, data);
+
+    // If the item name changed, update the corresponding poker range name
+    if (data.name) {
+        const itemDoc = await getDoc(itemRef);
+        const itemData = itemDoc.data() as Item;
+        if (itemData.type === 'pokerRange' && itemData.contentId) {
+            const rangeRef = doc(pokerRangesCol, itemData.contentId);
+            batch.update(rangeRef, { name: data.name });
+        }
+    }
+    
+    await batch.commit();
+    const updatedDoc = await getDoc(itemRef);
+    return mapDocToData<Item>(updatedDoc);
+};
+
+export const deleteItem = async (id: string, userId: string): Promise<void> => {
+    if (firebaseError) throw new Error(firebaseError);
+    if (!db) throw new Error("A base de dados Firestore não está inicializada.");
+
+    const batch = writeBatch(db);
+    const allItems = await getItems(userId);
+    
+    const idsToDelete = new Set<string>();
+    const contentIdsToDelete = {
+        notes: new Set<string>(),
+        htmlViews: new Set<string>(),
+        pokerRanges: new Set<string>(),
+        rangeContents: new Set<string>(),
+    };
+    
+    const itemsCol = getCollection('items');
+    const notesCol = getCollection('notes');
+    const htmlViewsCol = getCollection('htmlViews');
+    const pokerRangesCol = getCollection('pokerRanges');
+    const rangeContentsCol = getCollection('rangeContents');
+    const videosCol = getCollection('videos');
+
+    const findChildrenRecursive = (parentId: string) => {
         idsToDelete.add(parentId);
-        const children = db.items.filter(i => i.parentId === parentId);
-        children.forEach(child => findChildrenRecursive(child.id));
-      };
-  
-      findChildrenRecursive(id);
-  
-      const contentIdsToDelete = new Set<string>();
-      idsToDelete.forEach(itemId => {
-          const item = db.items.find(i => i.id === itemId);
-          if (item?.contentId) {
-              contentIdsToDelete.add(item.contentId);
-          }
-      });
-  
-      db.items = db.items.filter(i => !idsToDelete.has(i.id));
-      db.notes = db.notes.filter(n => !contentIdsToDelete.has(n.id));
-      db.htmlViews = db.htmlViews.filter(h => !contentIdsToDelete.has(h.id));
-      db.pokerRanges = db.pokerRanges.filter(p => !contentIdsToDelete.has(p.id));
-      
-      // Apaga também os vídeos/ranges dentro das pastas eliminadas
-      if (itemToDelete.type === 'videoFolder') {
-        db.videos = db.videos.filter((v: Video) => !idsToDelete.has(v.parentId!));
-      }
-      if (itemToDelete.type === 'rangeFolder') {
-        db.rangeContents = db.rangeContents.filter((rc: RangeContent) => !idsToDelete.has(rc.id));
-      }
-      
-      saveDB(db as any);
-      resolve();
+        const item = allItems.find(i => i.id === parentId);
+        if (item) {
+            if (item.contentId) {
+                if (item.type === 'note') contentIdsToDelete.notes.add(item.contentId);
+                if (item.type === 'htmlView') contentIdsToDelete.htmlViews.add(item.contentId);
+                if (item.type === 'pokerRange') contentIdsToDelete.pokerRanges.add(item.contentId);
+            }
+            if (item.type === 'rangeFolder') contentIdsToDelete.rangeContents.add(item.id);
+            allItems.filter(i => i.parentId === parentId).forEach(child => findChildrenRecursive(child.id));
+        }
+    };
+
+    findChildrenRecursive(id);
+
+    idsToDelete.forEach(id => batch.delete(doc(itemsCol, id)));
+    contentIdsToDelete.notes.forEach(id => batch.delete(doc(notesCol, id)));
+    contentIdsToDelete.htmlViews.forEach(id => batch.delete(doc(htmlViewsCol, id)));
+    contentIdsToDelete.pokerRanges.forEach(id => batch.delete(doc(pokerRangesCol, id)));
+    contentIdsToDelete.rangeContents.forEach(id => batch.delete(doc(rangeContentsCol, id)));
+    
+    const videosSnapshot = await getDocs(query(videosCol, where("ownerId", "==", userId)));
+    videosSnapshot.docs.forEach(videoDoc => {
+        const video = mapDocToData<Video>(videoDoc);
+        if (video.parentId && idsToDelete.has(video.parentId)) {
+            batch.delete(videoDoc.ref);
+        }
     });
+
+    await batch.commit();
 };
 
 // Note Endpoints
-export const getNote = (id: string): Promise<Note> => {
-    return new Promise((resolve, reject) => {
-        const db = getDB();
-        const note = db.notes.find(n => n.id === id);
-        if (note) {
-            resolve(note);
-        } else {
-            reject(new Error("Note not found"));
-        }
-    });
+export const getNotes = async (userId: string): Promise<Note[]> => {
+    const items = await getItems(userId);
+    const noteIds = items.filter(item => item.type === 'note' && item.contentId).map(item => item.contentId!);
+    if (noteIds.length === 0) return [];
+    
+    const notesCol = getCollection('notes');
+    const q = query(notesCol, where(documentId(), 'in', noteIds));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => mapDocToData<Note>(doc));
 };
 
-export const getNotes = (): Promise<Note[]> => {
-    return new Promise((resolve) => {
-        const db = getDB();
-        resolve(db.notes);
-    });
+export const getNote = async (id: string): Promise<Note> => {
+    const notesCol = getCollection('notes');
+    const docRef = doc(notesCol, id);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) throw new Error("Note not found");
+    return mapDocToData<Note>(docSnap);
 };
 
-export const updateNote = (id: string, content: string): Promise<Note> => {
-    return new Promise((resolve, reject) => {
-        const db = getDB();
-        const noteIndex = db.notes.findIndex(n => n.id === id);
-        if (noteIndex > -1) {
-            db.notes[noteIndex].content = content;
-            saveDB(db as any);
-            resolve(db.notes[noteIndex]);
-        } else {
-            reject(new Error("Note not found"));
-        }
-    });
+export const updateNote = async (id: string, content: string): Promise<Note> => {
+    const notesCol = getCollection('notes');
+    const docRef = doc(notesCol, id);
+    await updateDoc(docRef, { content });
+    return { id, content };
 };
 
-// HTML View Endpoints
-export const getHtmlView = (id: string): Promise<HtmlView> => {
-    return new Promise((resolve, reject) => {
-        const db = getDB();
-        const view = db.htmlViews.find(v => v.id === id);
-        if (view) {
-            resolve(view);
-        } else {
-            reject(new Error("HTML View not found"));
-        }
-    });
+// HtmlView Endpoints
+export const getHtmlView = async (id: string): Promise<HtmlView> => {
+    const htmlViewsCol = getCollection('htmlViews');
+    const docRef = doc(htmlViewsCol, id);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) throw new Error("HTML View not found");
+    return mapDocToData<HtmlView>(docSnap);
 };
 
-export const updateHtmlView = (id: string, htmlContent: string): Promise<HtmlView> => {
-    return new Promise((resolve, reject) => {
-        const db = getDB();
-        const viewIndex = db.htmlViews.findIndex(v => v.id === id);
-        if (viewIndex > -1) {
-            db.htmlViews[viewIndex].htmlContent = htmlContent;
-            saveDB(db as any);
-            resolve(db.htmlViews[viewIndex]);
-        } else {
-            reject(new Error("HTML View not found"));
-        }
-    });
+export const updateHtmlView = async (id: string, htmlContent: string): Promise<HtmlView> => {
+    const htmlViewsCol = getCollection('htmlViews');
+    const docRef = doc(htmlViewsCol, id);
+    await updateDoc(docRef, { htmlContent });
+    return { id, htmlContent };
 };
 
 // Video Endpoints
-export const getVideos = (): Promise<Video[]> => {
-    return new Promise((resolve) => {
-        const db = getDB();
-        resolve(db.videos);
-    });
+export const getVideos = async (userId: string): Promise<Video[]> => {
+    const videosCol = getCollection('videos');
+    const q = query(videosCol, where("ownerId", "==", userId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => mapDocToData<Video>(doc));
 };
 
-export const createVideo = (title: string, url: string, description: string, parentId: string | null): Promise<Video> => {
-    return new Promise((resolve) => {
-        const db = getDB();
-        const newVideo: Video = {
-            id: generateId('video'),
-            title,
-            url,
-            description,
-            parentId,
-        };
-        db.videos.push(newVideo);
-        saveDB(db as any);
-        resolve(newVideo);
-    });
+export const createVideo = async (title: string, url: string, description: string, parentId: string | null, userId: string): Promise<Video> => {
+    const videosCol = getCollection('videos');
+    const newVideoData = { title, url, description, parentId, ownerId: userId };
+    const docRef = await addDoc(videosCol, newVideoData);
+    return { id: docRef.id, ...newVideoData };
 };
 
-export const updateVideo = (id: string, data: { title: string, url: string, description: string }): Promise<Video> => {
-    return new Promise((resolve, reject) => {
-        const db = getDB();
-        const videoIndex = db.videos.findIndex(v => v.id === id);
-        if (videoIndex > -1) {
-            db.videos[videoIndex] = { ...db.videos[videoIndex], ...data };
-            saveDB(db as any);
-            resolve(db.videos[videoIndex]);
-        } else {
-            reject(new Error("Video not found"));
+export const updateVideo = async (id: string, data: { title: string; url: string; description: string }): Promise<Video> => {
+    const videosCol = getCollection('videos');
+    const docRef = doc(videosCol, id);
+    await updateDoc(docRef, data);
+    const updatedDoc = await getDoc(docRef);
+    return mapDocToData<Video>(updatedDoc);
+};
+
+export const deleteVideo = async (id: string): Promise<void> => {
+    const videosCol = getCollection('videos');
+    await deleteDoc(doc(videosCol, id));
+};
+
+// RangeContent Endpoints
+export const getRangeContent = async (folderId: string): Promise<RangeContent> => {
+    const rangeContentsCol = getCollection('rangeContents');
+    const docRef = doc(rangeContentsCol, folderId);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+        return { id: folderId, data: {} };
+    }
+    return mapDocToData<RangeContent>(docSnap);
+};
+
+export const updateRangeContent = async (content: RangeContent, userId: string): Promise<RangeContent> => {
+    const rangeContentsCol = getCollection('rangeContents');
+    const docRef = doc(rangeContentsCol, content.id);
+    const dataToSet = { ...content, ownerId: userId };
+    await setDoc(docRef, dataToSet);
+    return content;
+};
+
+// PokerRange Endpoints
+export const getRange = async (id: string): Promise<PokerRange> => {
+    const pokerRangesCol = getCollection('pokerRanges');
+    const docRef = doc(pokerRangesCol, id);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+        throw new Error("PokerRange content not found");
+    }
+    const range = mapDocToData<PokerRange>(docSnap);
+    for (const stack in range.rangesByStack) {
+        const positions = range.rangesByStack[stack as keyof typeof range.rangesByStack];
+        if(positions) {
+            for (const pos in positions) {
+                const posData = positions[pos as keyof typeof positions];
+                if (posData && posData.rawText && (!posData.matrix || Object.keys(posData.matrix).length === 0)) {
+                    posData.matrix = parseRangeText(typeof posData.rawText === 'string' ? { raise: posData.rawText } : posData.rawText);
+                }
+            }
         }
-    });
+    }
+    return range;
 };
 
-export const deleteVideo = (id: string): Promise<void> => {
-    return new Promise((resolve) => {
-        const db = getDB();
-        db.videos = db.videos.filter(v => v.id !== id);
-        saveDB(db as any);
-        resolve();
-    });
-};
-
-// Range Content Endpoints
-export const getRangeContent = (folderId: string): Promise<RangeContent> => {
-    return new Promise((resolve) => {
-        const db = getDB();
-        let content = db.rangeContents.find(rc => rc.id === folderId);
-        if (content) {
-            resolve(content);
-        } else {
-            // Create a new one if it doesn't exist
-            const newContent: RangeContent = {
-                id: folderId,
-                data: {}, // Start with empty data
-            };
-            db.rangeContents.push(newContent);
-            saveDB(db);
-            resolve(newContent);
-        }
-    });
-};
-
-export const updateRangeContent = (content: RangeContent): Promise<RangeContent> => {
-    return new Promise((resolve, reject) => {
-        const db = getDB();
-        const contentIndex = db.rangeContents.findIndex(rc => rc.id === content.id);
-        if (contentIndex > -1) {
-            db.rangeContents[contentIndex] = content;
-            saveDB(db);
-            resolve(content);
-        } else {
-            // If it doesn't exist for some reason, add it
-            db.rangeContents.push(content);
-            saveDB(db);
-            resolve(content);
-        }
-    });
-};
-
-// Poker Range (Training) Endpoints
-export const getRange = (id: string): Promise<PokerRange> => {
-    return new Promise((resolve, reject) => {
-        const db = getDB();
-        const range = db.pokerRanges.find(r => r.id === id);
-        if (range) {
-            // Deep copy and process on get to ensure data is always fresh
-            resolve(processRanges([JSON.parse(JSON.stringify(range))])[0]);
-        } else {
-            reject(new Error("PokerRange content not found"));
-        }
-    });
-};
-
-
-export const updateRange = (id: string, data: Partial<Omit<PokerRange, 'id'>>): Promise<PokerRange> => {
-    return new Promise((resolve, reject) => {
-        const db = getDB();
-        const rangeIndex = db.pokerRanges.findIndex(r => r.id === id);
-        if (rangeIndex > -1) {
-            db.pokerRanges[rangeIndex] = { ...db.pokerRanges[rangeIndex], ...data };
-            saveDB(db as any);
-            resolve(db.pokerRanges[rangeIndex]);
-        } else {
-            reject(new Error("PokerRange not found"));
-        }
-    });
+export const updateRange = async (id: string, data: Partial<Omit<PokerRange, 'id'>>): Promise<PokerRange> => {
+    const pokerRangesCol = getCollection('pokerRanges');
+    const docRef = doc(pokerRangesCol, id);
+    await updateDoc(docRef, data);
+    const updatedDoc = await getDoc(docRef);
+    return mapDocToData<PokerRange>(updatedDoc);
 };

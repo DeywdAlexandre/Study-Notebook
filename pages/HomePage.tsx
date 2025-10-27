@@ -14,6 +14,9 @@ import TrainingPane from '../components/TrainingPane';
 import QuizMode from '../components/QuizMode';
 import SessionSidebar, { SessionHand, SessionStats } from '../components/SessionSidebar';
 import SessionReportModal from '../components/SessionReportModal';
+import { useAuth } from '../hooks/useAuth';
+import LoginPage from './LoginPage';
+import FirebaseErrorDisplay from '../components/FirebaseErrorDisplay';
 
 
 type ActiveView = 'notebook' | 'videoteca' | 'ranges' | 'treino' | 'drill';
@@ -38,6 +41,8 @@ const noteAiActions: AiAction[] = [
 const noteActionCategories = ['Compreensão', 'Criação & Estudo', 'Melhoria'];
 
 const HomePage: React.FC = () => {
+  const { user, loading: authLoading, signOutUser } = useAuth();
+  
   const [items, setItems] = useState<Item[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [videos, setVideos] = useState<Video[]>([]);
@@ -48,7 +53,7 @@ const HomePage: React.FC = () => {
   const [selectedRangeFolder, setSelectedRangeFolder] = useState<Item | null>(null);
   const [selectedTrainingItem, setSelectedTrainingItem] = useState<Item | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<ActiveView>('notebook');
   const [searchTerm, setSearchTerm] = useState('');
@@ -131,38 +136,45 @@ const HomePage: React.FC = () => {
     editorRef.current?.triggerAiAction(action);
   };
 
-  const fetchAllData = useCallback(async () => {
-    setLoading(true);
+  const fetchAllData = useCallback(async (userId: string) => {
+    setLoadingData(true);
     setError(null);
     try {
       const [itemsData, notesData, videosData] = await Promise.all([
-        getItems(),
-        getNotes(),
-        getVideos(),
+        getItems(userId),
+        getNotes(userId),
+        getVideos(userId),
       ]);
       setItems(itemsData);
       setNotes(notesData);
       setVideos(videosData);
     } catch (err: any) {
-      console.error("Falha ao carregar dados da API local:", err);
+      console.error("Falha ao carregar dados do Firestore:", err);
       setError(err.message || "Não foi possível carregar os dados.");
       setItems([]);
       setNotes([]);
       setVideos([]);
     } finally {
-      setLoading(false);
+      setLoadingData(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchAllData();
-  }, [fetchAllData]);
+    if (user?.uid) {
+        fetchAllData(user.uid);
+    } else if (!authLoading) { // Only clear data if not in the middle of auth check
+        setItems([]);
+        setNotes([]);
+        setVideos([]);
+        setLoadingData(false);
+    }
+  }, [user, authLoading, fetchAllData]);
 
   useEffect(() => {
     if (activeView === 'drill' && selectedTrainingItem?.type === 'pokerRange' && selectedTrainingItem.contentId) {
         if (quizRange?.id === selectedTrainingItem.contentId) return;
         
-        setLoading(true);
+        setLoadingData(true);
         setQuizRange(null);
         getRange(selectedTrainingItem.contentId)
             .then(setQuizRange)
@@ -170,7 +182,7 @@ const HomePage: React.FC = () => {
                 console.error("Failed to load range for drill", err);
                 setError("Could not load range for drill.");
             })
-            .finally(() => setLoading(false));
+            .finally(() => setLoadingData(false));
 
     }
   }, [activeView, selectedTrainingItem, quizRange]);
@@ -250,8 +262,10 @@ const HomePage: React.FC = () => {
   }, [videos, searchTerm, selectedVideoFolder]);
 
   const handleDataChange = useCallback(() => {
-    fetchAllData();
-  }, [fetchAllData]);
+    if (user?.uid) {
+        fetchAllData(user.uid);
+    }
+  }, [user, fetchAllData]);
 
   const renderContentPane = () => {
     switch (activeView) {
@@ -269,7 +283,7 @@ const HomePage: React.FC = () => {
                     </div>
                 );
             }
-            if (loading) {
+            if (loadingData) {
                 return <div className="h-full flex items-center justify-center"><Spinner /></div>;
             }
             if (!quizRange) {
@@ -341,6 +355,22 @@ const HomePage: React.FC = () => {
   const showAiButton = activeView === 'notebook' && selectedItem?.type === 'note';
 
   const showSidebar = ['notebook', 'videoteca', 'ranges', 'treino', 'drill'].includes(activeView);
+  
+  if (error && error.includes('Configuração do Firebase em falta')) {
+      return <FirebaseErrorDisplay error={error} />;
+  }
+  
+  if (authLoading) {
+    return (
+        <div className="h-screen w-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900">
+            <Spinner />
+        </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
 
   return (
     <div className="h-screen w-screen flex flex-col bg-slate-100 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-medium">
@@ -404,6 +434,13 @@ const HomePage: React.FC = () => {
             >
               <Icon name={theme === 'light' ? 'Moon' : 'Sun'} size={20} />
             </button>
+            <button
+              onClick={signOutUser}
+              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"
+              title="Sair"
+            >
+              <Icon name="LogOut" size={20} />
+            </button>
         </div>
       </header>
       <div className="flex-grow flex overflow-hidden">
@@ -420,19 +457,20 @@ const HomePage: React.FC = () => {
                 <div className="flex-shrink-0 mb-2">
                     <SearchBar value={searchTerm} onChange={setSearchTerm} />
                 </div>
-                {loading && <div className="p-4 flex justify-center items-center h-full"><Spinner /></div>}
-                {error && <div className="p-4 text-red-500 text-sm">{error}</div>}
+                {loadingData && <div className="p-4 flex justify-center items-center h-full"><Spinner /></div>}
                 
-                {!loading && !error && activeView === 'notebook' && (
+                {error && !error.includes('Configuração do Firebase em falta') && <div className="p-4 text-red-500 text-sm">{error}</div>}
+                
+                {!loadingData && !error && activeView === 'notebook' && (
                     <FileTreeView viewType="notebook" items={filteredNotebookItems} onSelectItem={setSelectedItem} selectedItem={selectedItem} onItemsChange={handleDataChange} />
                 )}
-                {!loading && !error && activeView === 'videoteca' && (
+                {!loadingData && !error && activeView === 'videoteca' && (
                     <FileTreeView viewType="videoteca" items={filteredVideotecaFolders} onSelectItem={setSelectedVideoFolder} selectedItem={selectedVideoFolder} onItemsChange={handleDataChange} />
                 )}
-                {!loading && !error && activeView === 'ranges' && (
+                {!loadingData && !error && activeView === 'ranges' && (
                     <FileTreeView viewType="ranges" items={filteredRangeFolders} onSelectItem={setSelectedRangeFolder} selectedItem={selectedRangeFolder} onItemsChange={handleDataChange} />
                 )}
-                {!loading && !error && (activeView === 'treino' || activeView === 'drill') && (
+                {!loadingData && !error && (activeView === 'treino' || activeView === 'drill') && (
                     <FileTreeView viewType="treino" items={filteredTrainingItems} onSelectItem={setSelectedTrainingItem} selectedItem={selectedTrainingItem} onItemsChange={handleDataChange} />
                 )}
             </div>

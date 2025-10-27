@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import Icon from './Icon';
 import Spinner from './Spinner';
@@ -7,17 +7,16 @@ const AuthPortal: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
+  const { signInWithGoogle, signInWithEmail, signUpWithEmail, authError, signInAsGuest } = useAuth();
 
   const handleGoogleSignIn = async () => {
-    setError(null);
     setLoading(true);
     try {
       await signInWithGoogle();
+      // O onAuthStateChanged tratará do redirecionamento
     } catch (err: any) {
-      setError(err.message);
+      // O erro já é capturado e exibido pelo `authError` do hook
     } finally {
         setLoading(false);
     }
@@ -25,7 +24,6 @@ const AuthPortal: React.FC = () => {
   
   const handleEmailAuth = async (e: React.FormEvent) => {
       e.preventDefault();
-      setError(null);
       setLoading(true);
       try {
           if (isLogin) {
@@ -33,12 +31,25 @@ const AuthPortal: React.FC = () => {
           } else {
               await signUpWithEmail(email, password);
           }
+           // O onAuthStateChanged tratará do redirecionamento
       } catch (err: any) {
-          setError(err.message);
+          // O erro já é tratado e exibido pelo `authError` do hook
       } finally {
           setLoading(false);
       }
   }
+  
+  const handleGuestSignIn = async () => {
+    setLoading(true);
+    try {
+      await signInAsGuest();
+      // O onAuthStateChanged tratará do redirecionamento
+    } catch (err: any) {
+      // O erro já é capturado e exibido pelo `authError` do hook
+    } finally {
+        setLoading(false);
+    }
+  };
 
   return (
     <div className="w-full max-w-md bg-white dark:bg-slate-800 p-8 rounded-lg shadow-lg">
@@ -46,7 +57,19 @@ const AuthPortal: React.FC = () => {
         {isLogin ? 'Welcome Back' : 'Create Account'}
       </h2>
       
-      {error && <p className="bg-red-100 text-red-700 p-3 rounded mb-4 text-sm">{error}</p>}
+      {authError && (
+        <div className="bg-red-100 dark:bg-red-900/20 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 rounded-md mb-4" role="alert">
+            <div className="flex">
+                <div className="py-1">
+                    <Icon name="AlertTriangle" size={20} className="text-red-500 mr-3 flex-shrink-0" />
+                </div>
+                <div>
+                    <p className="font-bold">Atenção</p>
+                    <p className="text-sm leading-relaxed">{authError}</p>
+                </div>
+            </div>
+        </div>
+      )}
 
       <form onSubmit={handleEmailAuth}>
         <div className="mb-4">
@@ -80,7 +103,6 @@ const AuthPortal: React.FC = () => {
           disabled={loading}
           className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition duration-300 disabled:bg-blue-300 flex items-center justify-center min-h-[42px]"
         >
-          {/* FIX: Import and use the Spinner component, customizing its appearance for the button. */}
           {loading ? <Spinner className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" /> : (isLogin ? 'Log In' : 'Sign Up')}
         </button>
       </form>
@@ -100,9 +122,22 @@ const AuthPortal: React.FC = () => {
         Sign in with Google
       </button>
 
+      <div className="text-center mt-4">
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">A ter problemas no AI Studio?</p>
+        <button
+          onClick={handleGuestSignIn}
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-2 border border-dashed border-amber-500 text-amber-600 dark:text-amber-400 py-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition duration-300"
+          title="Use esta opção se o login normal falhar no ambiente de desenvolvimento do AI Studio."
+        >
+          <Icon name="UserCog" size={20} />
+          Continuar como Convidado (Desenvolvimento)
+        </button>
+      </div>
+
       <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
         {isLogin ? "Don't have an account?" : 'Already have an account?'}
-        <button onClick={() => setIsLogin(!isLogin)} className="ml-1 text-blue-600 hover:underline">
+        <button onClick={() => { setIsLogin(!isLogin); }} className="ml-1 text-blue-600 hover:underline">
           {isLogin ? 'Sign up' : 'Log in'}
         </button>
       </p>

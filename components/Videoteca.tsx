@@ -9,6 +9,7 @@ import PlayerModal from './PlayerModal';
 import { createVideo, updateVideo, deleteVideo } from '../services/api';
 import type { Video } from '../types';
 import { useConfirmation } from '../context/ConfirmationContext';
+import { useAuth } from '../hooks/useAuth';
 
 interface VideotecaProps {
     videos: Video[];
@@ -21,6 +22,7 @@ const Videoteca: React.FC<VideotecaProps> = ({ videos, onDataChange, selectedFol
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
   const [playingVideo, setPlayingVideo] = useState<Video | null>(null);
   const { confirm } = useConfirmation();
+  const { user } = useAuth();
 
   const handleOpenAddModal = () => {
     setEditingVideo(null);
@@ -33,11 +35,15 @@ const Videoteca: React.FC<VideotecaProps> = ({ videos, onDataChange, selectedFol
   };
 
   const handleSaveVideo = async (title: string, url: string, description: string, id?: string) => {
+    if (!user) {
+        alert("Erro: Utilizador não autenticado.");
+        return;
+    }
     try {
       if (id) {
         await updateVideo(id, { title, url, description });
       } else {
-        await createVideo(title, url, description, selectedFolderId);
+        await createVideo(title, url, description, selectedFolderId, user.uid);
       }
       onDataChange();
       setIsModalOpen(false);

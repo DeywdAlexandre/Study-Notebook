@@ -6,6 +6,7 @@ import { getRangeContent, updateRangeContent } from '../services/api';
 import ImageUploader from './ImageUploader';
 import Icon from './Icon';
 import Spinner from './Spinner';
+import { useAuth } from '../hooks/useAuth';
 
 interface RangesPaneProps {
     selectedFolder: Item | null;
@@ -22,6 +23,7 @@ const ControlButton: React.FC<{
 );
 
 const RangesPane: React.FC<RangesPaneProps> = ({ selectedFolder }) => {
+    const { user } = useAuth();
     const { heroPositions, villainPositions, initialHero, initialVillain } = useMemo(() => {
         switch(selectedFolder?.rangeType) {
             case 'blind_vs_blind':
@@ -134,10 +136,10 @@ const RangesPane: React.FC<RangesPaneProps> = ({ selectedFolder }) => {
     };
 
     const handleSave = async () => {
-        if (!rangeContent) return;
+        if (!rangeContent || !user) return;
         setIsSaving(true);
         try {
-            await updateRangeContent(rangeContent);
+            await updateRangeContent(rangeContent, user.uid);
         } catch (error) {
             console.error("Failed to save range content", error);
             alert("Falha ao guardar as alterações.");

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { getNote, updateNote, createItem } from '../services/api';
 import { runAiInteraction } from '../services/gemini';
@@ -5,6 +6,7 @@ import Spinner from './Spinner';
 import type { Item } from '../types';
 import Icon from './Icon';
 import AiAssistantModal from './AiAssistantModal';
+import { useAuth } from '../hooks/useAuth';
 
 // Garante que o objeto global Quill esteja disponível
 declare global {
@@ -24,6 +26,7 @@ export interface EditorPaneRef {
 }
 
 const EditorPane = forwardRef<EditorPaneRef, EditorPaneProps>(({ item, onItemsChange }, ref) => {
+  const { user } = useAuth();
   const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'idle'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
@@ -172,13 +175,13 @@ ${noteContent}
   }
 
   const handleSaveAiSummary = async (name: string, content: string) => {
-    if (!item) return; // Should not happen if the action is available
+    if (!item || !user) return; 
     if (!name.trim()) {
         alert("O nome não pode estar vazio.");
         return;
     }
     try {
-        await createItem(name, 'htmlView', item.parentId, { initialContent: content });
+        await createItem(name, 'htmlView', item.parentId, user.uid, { initialContent: content });
         alert(`'${name}' foi criado com sucesso!`);
         setIsAiModalOpen(false);
         onItemsChange();
