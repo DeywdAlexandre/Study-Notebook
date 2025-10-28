@@ -1,5 +1,4 @@
 
-
 /**
  * Executa uma interação com o modelo de IA do Gemini.
  * @param prompt O prompt a ser enviado para o modelo.
@@ -11,10 +10,10 @@ export const runAiInteraction = async (prompt: string): Promise<string> => {
     // evitando qualquer potencial problema de inicialização durante o arranque da app.
     const { GoogleGenAI } = await import('@google/genai');
 
-    const apiKey = "__GEMINI_API_KEY__";
+    const apiKey = process.env.API_KEY;
 
-    if (!apiKey || apiKey.startsWith("__")) {
-      throw new Error("A API_KEY do Google Gemini não foi encontrada. Por favor, configure o 'secret' VITE_GEMINI_API_KEY no repositório do GitHub.");
+    if (!apiKey) {
+      throw new Error("A API_KEY do Google Gemini não foi encontrada. Por favor, configure a variável de ambiente.");
     }
 
     const ai = new GoogleGenAI({ apiKey });

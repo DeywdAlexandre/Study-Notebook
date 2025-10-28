@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { FileTreeView } from '../components/FileTreeView';
 import EditorPane, { EditorPaneRef, AiActionType } from '../components/EditorPane';
 import HtmlRenderer from '../components/HtmlRenderer';
+import GoogleDocViewer from '../components/GoogleDocViewer';
 import Spinner from '../components/Spinner';
 import Icon from '../components/Icon';
 import { getItems, getNotes, getVideos, getRange } from '../services/api';
@@ -63,6 +64,10 @@ const HomePage: React.FC = () => {
   
   const [isAiMenuOpen, setIsAiMenuOpen] = useState(false);
   const aiMenuRef = useRef<HTMLDivElement>(null);
+  
+  // PWA Install state
+  const [installPromptEvent, setInstallPromptEvent] = useState<any | null>(null);
+
 
   // State for Session Sidebar and Report Modal
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -130,6 +135,42 @@ const HomePage: React.FC = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isAiMenuOpen]);
+  
+  // PWA Installation Logic
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault(); // Prevent the mini-infobar from appearing on mobile
+      setInstallPromptEvent(event);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Listener for when the app is actually installed
+    const handleAppInstalled = () => {
+      setInstallPromptEvent(null);
+    };
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (installPromptEvent) {
+      const result = await installPromptEvent.prompt();
+      console.log(`Install prompt was: ${result.outcome}`);
+      // The event can only be used once.
+      setInstallPromptEvent(null);
+    } else {
+      alert(
+        "A instalação automática não está disponível no momento.\n\n" +
+        "Para instalar, procure a opção 'Instalar Aplicação' ou 'Adicionar ao Ecrã Principal' no menu do seu navegador (geralmente no canto superior direito)."
+      );
+    }
+  };
+
 
   const handleNoteAiActionClick = (action: AiActionType) => {
     setIsAiMenuOpen(false);
@@ -187,7 +228,7 @@ const HomePage: React.FC = () => {
     }
   }, [activeView, selectedTrainingItem, quizRange]);
   
-  const notebookItems = React.useMemo(() => items.filter(item => item.type === 'folder' || item.type === 'note' || item.type === 'htmlView'), [items]);
+  const notebookItems = React.useMemo(() => items.filter(item => item.type === 'folder' || item.type === 'note' || item.type === 'htmlView' || item.type === 'googleDoc'), [items]);
   const videotecaFolders = React.useMemo(() => items.filter(item => item.type === 'videoFolder'), [items]);
   const rangeFolders = React.useMemo(() => items.filter(item => item.type === 'rangeFolder'), [items]);
   const trainingItems = React.useMemo(() => items.filter(item => item.type === 'rangeFolder' || item.type === 'pokerRange'), [items]);
@@ -307,6 +348,8 @@ const HomePage: React.FC = () => {
                     return <EditorPane ref={editorRef} item={selectedItem} onItemsChange={handleDataChange} />;
                 case 'htmlView':
                     return <HtmlRenderer item={selectedItem} />;
+                case 'googleDoc':
+                    return <GoogleDocViewer item={selectedItem} />;
                 default:
                     return <EditorPane ref={editorRef} item={null} onItemsChange={handleDataChange}/>;
             }
@@ -325,7 +368,7 @@ const HomePage: React.FC = () => {
         case 'videoteca':
             return selectedVideoFolder ? selectedVideoFolder.name : 'Videoteca';
         case 'notebook':
-            return selectedItem ? selectedItem.name : 'Study Notebook';
+            return selectedItem ? selectedItem.name : 'Notebook';
         case 'ranges':
             return selectedRangeFolder ? selectedRangeFolder.name : 'HRC';
         case 'treino':
@@ -333,7 +376,7 @@ const HomePage: React.FC = () => {
         case 'drill':
             return `Drill: ${quizRange?.name || selectedTrainingItem?.name || 'Selecione um Range'}`;
         default:
-            return 'Study Notebook';
+            return 'Notebook';
     }
   }
   
@@ -377,7 +420,7 @@ const HomePage: React.FC = () => {
       <header className="flex-shrink-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center z-30 shadow-sm no-print">
         <div className="w-80 flex-shrink-0 flex items-center gap-3">
             <Icon name="BrainCircuit" className="text-indigo-600" size={32}/>
-            <h1 className="text-2xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Study Notebook</h1>
+            <h1 className="text-2xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">All-in One PokerAce</h1>
         </div>
         <div className="flex-grow text-center px-4">
             <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 truncate">{getHeaderTitle()}</h2>
@@ -433,6 +476,13 @@ const HomePage: React.FC = () => {
               title={`Mudar para modo ${theme === 'light' ? 'escuro' : 'claro'}`}
             >
               <Icon name={theme === 'light' ? 'Moon' : 'Sun'} size={20} />
+            </button>
+            <button
+              onClick={handleInstallClick}
+              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700"
+              title="Instalar Aplicação"
+            >
+              <Icon name="Download" size={20} />
             </button>
             <button
               onClick={signOutUser}

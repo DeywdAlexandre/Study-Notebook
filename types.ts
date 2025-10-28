@@ -1,11 +1,12 @@
 
+
 export interface User {
   uid: string;
   email: string | null;
   displayName: string | null;
 }
 
-export type ItemType = 'folder' | 'note' | 'htmlView' | 'videoFolder' | 'rangeFolder' | 'pokerRange';
+export type ItemType = 'folder' | 'note' | 'htmlView' | 'videoFolder' | 'rangeFolder' | 'pokerRange' | 'googleDoc';
 
 export interface Item {
   id: string;
@@ -14,6 +15,7 @@ export interface Item {
   ownerId: string;
   parentId: string | null;
   contentId?: string;
+  order?: string; // New field for custom sorting
   children?: Item[];
   rangeType?: 'all_positions' | 'blind_vs_blind' | 'open_raise';
 }
@@ -26,6 +28,11 @@ export interface Note {
 export interface HtmlView {
     id: string;
     htmlContent: string;
+}
+
+export interface GoogleDoc {
+  id: string; // Corresponds to the googleDoc item's contentId
+  url: string;
 }
 
 export interface Video {

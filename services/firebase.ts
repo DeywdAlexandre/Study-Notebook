@@ -2,17 +2,22 @@ import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 
-// As credenciais foram substituídas por placeholders seguros.
-// O processo de deploy (GitHub Actions) irá substituir estes valores
-// pelas chaves guardadas nos "Secrets" do seu repositório.
+// #################################################################
+// ### IMPORTANTE: COLE AQUI AS SUAS CREDENCIAIS REAIS DO FIREBASE ###
+// #################################################################
+// 1. Vá a console.firebase.google.com e crie um novo projeto.
+// 2. Nas configurações do projeto, adicione uma nova aplicação web.
+// 3. O Firebase vai fornecer um objeto `firebaseConfig`. Copie e cole-o aqui.
+// 4. Ative 'Authentication' (com Google e Email/Password) e 'Firestore Database' na consola.
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 export const firebaseConfig = {
-  apiKey: "__FIREBASE_API_KEY__",
-  authDomain: "__FIREBASE_AUTH_DOMAIN__",
-  projectId: "__FIREBASE_PROJECT_ID__",
-  storageBucket: "__FIREBASE_STORAGE_BUCKET__",
-  messagingSenderId: "__FIREBASE_MESSAGING_SENDER_ID__",
-  appId: "__FIREBASE_APP_ID__",
-  measurementId: "__FIREBASE_MEASUREMENT_ID__"
+  apiKey: "AIzaSyBPUm26yOPMT7rAjytTcQz9HcDADhDjzlQ",
+  authDomain: "pokerace-ae503.firebaseapp.com",
+  projectId: "pokerace-ae503",
+  storageBucket: "pokerace-ae503.firebasestorage.app",
+  messagingSenderId: "944381233813",
+  appId: "1:944381233813:web:c6af760fb1a0ea464da99c",
+  measurementId: "G-HNCN8CH4H2"
 };
 
 let app: FirebaseApp | null = null;
@@ -23,10 +28,8 @@ let firebaseError: string | null = null;
 
 try {
   // Verifica se as credenciais são placeholders
-  if (firebaseConfig.apiKey.startsWith("__")) {
-    // No ambiente de desenvolvimento, isto pode falhar, mas o erro será informativo.
-    // No processo de deploy, estes valores serão substituídos.
-    throw new Error("Configuração do Firebase em falta. As credenciais devem ser fornecidas como 'secrets' do repositório para o deploy.");
+  if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+    throw new Error("Configuração do Firebase em falta. Por favor, adicione as suas credenciais em 'services/firebase.ts'.");
   }
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
@@ -34,7 +37,7 @@ try {
   googleProvider = new GoogleAuthProvider();
 } catch (e: any) {
   console.error("Falha na inicialização do Firebase:", e);
-  firebaseError = `Falha na inicialização do Firebase: ${e.message}. Verifique as suas credenciais em services/firebase.ts ou nos 'secrets' do repositório.`;
+  firebaseError = `Falha na inicialização do Firebase: ${e.message}. Verifique as suas credenciais em services/firebase.ts.`;
 }
 
 export { auth, db, googleProvider, firebaseError };

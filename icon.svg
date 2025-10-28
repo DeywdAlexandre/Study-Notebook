@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- A safe-zone background for maskable icons -->
+  <rect width="512" height="512" fill="#1e293b"/>
+  <!-- Poker chip shape -->
+  <circle cx="256" cy="256" r="224" fill="#f8fafc"/>
+  <circle cx="256" cy="256" r="192" stroke="#4f46e5" stroke-width="48"/>
+  
+  <!-- Ace of Spades Symbol -->
+  <path d="M256 160 C 196 240, 166 280, 166 320 C 166 350, 196 380, 256 380 C 316 380, 346 350, 346 320 C 346 280, 316 240, 256 160 Z" fill="#1e293b"/>
+  <rect x="244" y="350" width="24" height="70" rx="12" fill="#1e293b"/>
+</svg>

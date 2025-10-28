@@ -1,5 +1,6 @@
 
 
+
 import {
   collection,
   query,
@@ -16,7 +17,7 @@ import {
   documentId
 } from 'firebase/firestore';
 import { db, firebaseError } from './firebase';
-import type { Item, ItemType, Note, HtmlView, Video, RangeContent, PokerRange } from '../types';
+import type { Item, ItemType, Note, HtmlView, Video, RangeContent, PokerRange, GoogleDoc } from '../types';
 import { parseRangeText } from '../utils/range-parser';
 
 const getCollection = (collectionName: string) => {
@@ -61,20 +62,23 @@ export const createItem = async (
         type,
         parentId,
         ownerId: userId,
+        order: Date.now().toString(), // Add initial order
     };
 
     if (type === 'rangeFolder' && options.rangeType) {
         newItemData.rangeType = options.rangeType;
     }
 
-    if (type === 'note' || type === 'htmlView' || type === 'pokerRange') {
+    if (type === 'note' || type === 'htmlView' || type === 'pokerRange' || type === 'googleDoc') {
         const notesCol = getCollection('notes');
         const htmlViewsCol = getCollection('htmlViews');
         const pokerRangesCol = getCollection('pokerRanges');
+        const googleDocsCol = getCollection('googleDocs');
 
         const contentRef = doc(
             type === 'note' ? notesCol :
             type === 'htmlView' ? htmlViewsCol :
+            type === 'googleDoc' ? googleDocsCol :
             pokerRangesCol
         );
         newItemData.contentId = contentRef.id;
@@ -88,6 +92,8 @@ export const createItem = async (
         } else if (type === 'pokerRange') {
             const newRange: Omit<PokerRange, 'id'> = { name, rangesByStack: {} };
             batch.set(contentRef, { ...newRange, ownerId: userId });
+        } else if (type === 'googleDoc') {
+            batch.set(contentRef, { url: '', ownerId: userId });
         }
     }
     
@@ -112,7 +118,7 @@ export const createItem = async (
     return { id: newItemRef.id, ...newItemData };
 };
 
-export const updateItem = async (id: string, data: { name?: string; parentId?: string }): Promise<Item> => {
+export const updateItem = async (id: string, data: { name?: string; parentId?: string; order?: string }): Promise<Item> => {
     if (firebaseError) throw new Error(firebaseError);
     if (!db) throw new Error("A base de dados Firestore não está inicializada.");
     
@@ -151,6 +157,7 @@ export const deleteItem = async (id: string, userId: string): Promise<void> => {
         htmlViews: new Set<string>(),
         pokerRanges: new Set<string>(),
         rangeContents: new Set<string>(),
+        googleDocs: new Set<string>(),
     };
     
     const itemsCol = getCollection('items');
@@ -158,6 +165,7 @@ export const deleteItem = async (id: string, userId: string): Promise<void> => {
     const htmlViewsCol = getCollection('htmlViews');
     const pokerRangesCol = getCollection('pokerRanges');
     const rangeContentsCol = getCollection('rangeContents');
+    const googleDocsCol = getCollection('googleDocs');
     const videosCol = getCollection('videos');
 
     const findChildrenRecursive = (parentId: string) => {
@@ -168,6 +176,7 @@ export const deleteItem = async (id: string, userId: string): Promise<void> => {
                 if (item.type === 'note') contentIdsToDelete.notes.add(item.contentId);
                 if (item.type === 'htmlView') contentIdsToDelete.htmlViews.add(item.contentId);
                 if (item.type === 'pokerRange') contentIdsToDelete.pokerRanges.add(item.contentId);
+                if (item.type === 'googleDoc') contentIdsToDelete.googleDocs.add(item.contentId);
             }
             if (item.type === 'rangeFolder') contentIdsToDelete.rangeContents.add(item.id);
             allItems.filter(i => i.parentId === parentId).forEach(child => findChildrenRecursive(child.id));
@@ -181,6 +190,7 @@ export const deleteItem = async (id: string, userId: string): Promise<void> => {
     contentIdsToDelete.htmlViews.forEach(id => batch.delete(doc(htmlViewsCol, id)));
     contentIdsToDelete.pokerRanges.forEach(id => batch.delete(doc(pokerRangesCol, id)));
     contentIdsToDelete.rangeContents.forEach(id => batch.delete(doc(rangeContentsCol, id)));
+    contentIdsToDelete.googleDocs.forEach(id => batch.delete(doc(googleDocsCol, id)));
     
     const videosSnapshot = await getDocs(query(videosCol, where("ownerId", "==", userId)));
     videosSnapshot.docs.forEach(videoDoc => {
@@ -234,6 +244,22 @@ export const updateHtmlView = async (id: string, htmlContent: string): Promise<H
     const docRef = doc(htmlViewsCol, id);
     await updateDoc(docRef, { htmlContent });
     return { id, htmlContent };
+};
+
+// GoogleDoc Endpoints
+export const getGoogleDoc = async (id: string): Promise<GoogleDoc> => {
+    const googleDocsCol = getCollection('googleDocs');
+    const docRef = doc(googleDocsCol, id);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) throw new Error("Google Doc not found");
+    return mapDocToData<GoogleDoc>(docSnap);
+};
+
+export const updateGoogleDoc = async (id: string, url: string): Promise<GoogleDoc> => {
+    const googleDocsCol = getCollection('googleDocs');
+    const docRef = doc(googleDocsCol, id);
+    await updateDoc(docRef, { url });
+    return { id, url };
 };
 
 // Video Endpoints
